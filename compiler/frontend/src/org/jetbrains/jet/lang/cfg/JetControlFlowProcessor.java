@@ -26,7 +26,6 @@ import org.jetbrains.jet.lang.cfg.pseudocode.JetControlFlowInstructionsGenerator
 import org.jetbrains.jet.lang.cfg.pseudocode.LocalDeclarationInstruction;
 import org.jetbrains.jet.lang.cfg.pseudocode.Pseudocode;
 import org.jetbrains.jet.lang.cfg.pseudocode.PseudocodeImpl;
-import org.jetbrains.jet.lang.diagnostics.AbstractDiagnosticFactory;
 import org.jetbrains.jet.lang.psi.*;
 import org.jetbrains.jet.lang.resolve.BindingContext;
 import org.jetbrains.jet.lang.resolve.BindingContextUtils;
@@ -229,7 +228,6 @@ public class JetControlFlowProcessor {
                     visitAssignToArrayAccess(expression, arrayAccessExpression);
                 }
                 else if (left instanceof JetQualifiedExpression) {
-                    assert !(left instanceof JetHashQualifiedExpression) : left; // TODO
                     JetQualifiedExpression qualifiedExpression = (JetQualifiedExpression) left;
                     generateInstructions(qualifiedExpression.getReceiverExpression(), false);
                     generateInstructions(expression.getOperationReference(), false);
