@@ -324,6 +324,12 @@ public class JetExpressionParsing extends AbstractJetParsing {
                 return;
             }
         }
+        else if (at(COLONCOLON)) {
+            PsiBuilder.Marker expression = mark();
+            advance(); // COLONCOLON
+            parseSimpleNameExpression();
+            expression.done(CALLABLE_REFERENCE_EXPRESSION);
+        }
         else {
             myBuilder.disableJoiningComplexTokens();
             if (atSet(Precedence.PREFIX.getOperations())) {
@@ -343,6 +349,21 @@ public class JetExpressionParsing extends AbstractJetParsing {
         }
     }
 
+    private boolean parseCallableReferenceExpression() {
+        PsiBuilder.Marker expression = mark();
+        PsiBuilder.Marker typeReference = mark();
+        myJetParsing.parseUserType();
+        typeReference.done(TYPE_REFERENCE);
+        if (!at(COLONCOLON)) {
+            expression.rollbackTo();
+            return false;
+        }
+        advance(); // COLONCOLON
+        parseSimpleNameExpression();
+        expression.done(CALLABLE_REFERENCE_EXPRESSION);
+        return true;
+    }
+
     /*
      * atomicExpression postfixUnaryOperation?
      *
@@ -356,6 +377,9 @@ public class JetExpressionParsing extends AbstractJetParsing {
      */
     private void parsePostfixExpression() {
 //        System.out.println("post at "  + myBuilder.getTokenText());
+        if (parseCallableReferenceExpression()) {
+            return;
+        }
 
         PsiBuilder.Marker expression = mark();
         parseAtomicExpression();
@@ -384,13 +408,6 @@ public class JetExpressionParsing extends AbstractJetParsing {
 
                 expression.done(SAFE_ACCESS_EXPRESSION);
             }
-//            else if (at(HASH)) {
-//                advance(); // HASH
-//
-//                expect(IDENTIFIER, "Expecting property or function name");
-//
-//                expression.done(HASH_QUALIFIED_EXPRESSION);
-//            }
             else if (atSet(Precedence.POSTFIX.getOperations())) {
                 parseOperationReference();
                 expression.done(POSTFIX_EXPRESSION);

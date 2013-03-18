@@ -1,0 +1,37 @@
+JetFile: DoubleColonPrefix.jet
+  NAMESPACE_HEADER
+    <empty list>
+  PROPERTY
+    PsiElement(val)('val')
+    PsiWhiteSpace(' ')
+    PsiElement(IDENTIFIER)('foo')
+    PsiWhiteSpace(' ')
+    PsiElement(EQ)('=')
+    PsiWhiteSpace(' ')
+    CALL_EXPRESSION
+      REFERENCE_EXPRESSION
+        PsiElement(IDENTIFIER)('bar')
+      VALUE_ARGUMENT_LIST
+        PsiElement(LPAR)('(')
+        PsiWhiteSpace('\n    ')
+        VALUE_ARGUMENT
+          CALLABLE_REFERENCE_EXPRESSION
+            PsiElement(COLONCOLON)('::')
+            REFERENCE_EXPRESSION
+              PsiElement(IDENTIFIER)('a')
+        PsiElement(COMMA)(',')
+        PsiWhiteSpace('\n    ')
+        VALUE_ARGUMENT
+          CALLABLE_REFERENCE_EXPRESSION
+            PsiElement(COLONCOLON)('::')
+            REFERENCE_EXPRESSION
+              PsiElement(IDENTIFIER)('b')
+        PsiElement(COMMA)(',')
+        PsiWhiteSpace(' ')
+        VALUE_ARGUMENT
+          CALLABLE_REFERENCE_EXPRESSION
+            PsiElement(COLONCOLON)('::')
+            REFERENCE_EXPRESSION
+              PsiElement(IDENTIFIER)('c')
+        PsiWhiteSpace('\n')
+        PsiElement(RPAR)(')')

@@ -1,0 +1,7 @@
+val foo = bar(
+    A::a,
+    A::,
+    A::a + 1,
+    Map<String, Int>::size,
+    A::a::b
+)
