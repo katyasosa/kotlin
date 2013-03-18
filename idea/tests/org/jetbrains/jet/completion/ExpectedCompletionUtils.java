@@ -18,6 +18,7 @@ package org.jetbrains.jet.completion;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Collections2;
+import com.google.common.collect.ImmutableList;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementPresentation;
 import com.intellij.openapi.util.text.StringUtil;
@@ -97,20 +98,38 @@ public class ExpectedCompletionUtils {
         }
     }
     
-    public static final String EXIST_LINE_PREFIX = "// EXIST:";
-    public static final String EXIST_JS_LINE_PREFIX = "// EXIST_JS:";
-    public static final String EXIST_JAVA_LINE_PREFIX = "// EXIST_JAVA:";
+    private static final String EXIST_LINE_PREFIX = "EXIST:";
+    private static final String EXIST_JS_LINE_PREFIX = "EXIST_JS:";
+    private static final String EXIST_JAVA_LINE_PREFIX = "EXIST_JAVA:";
 
-    public static final String ABSENT_LINE_PREFIX = "// ABSENT:";
-    public static final String ABSENT_JS_LINE_PREFIX = "// ABSENT_JS:";
-    public static final String ABSENT_JAVA_LINE_PREFIX = "// ABSENT_JAVA:";
+    private static final String ABSENT_LINE_PREFIX = "ABSENT:";
+    private static final String ABSENT_JS_LINE_PREFIX = "ABSENT_JS:";
+    private static final String ABSENT_JAVA_LINE_PREFIX = "ABSENT_JAVA:";
 
-    public static final String NUMBER_LINE_PREFIX = "// NUMBER:";
-    public static final String NUMBER_JS_LINE_PREFIX = "// NUMBER_JS:";
-    public static final String NUMBER_JAVA_LINE_PREFIX = "// NUMBER_JAVA:";
+    private static final String EXIST_JAVA_ONLY_LINE_PREFIX = "EXIST_JAVA_ONLY:";
+    private static final String EXIST_JS_ONLY_LINE_PREFIX = "EXIST_JS_ONLY:";
 
-    public static final String EXECUTION_TIME_PREFIX = "// TIME:";
-    public static final String WITH_ORDER_PREFIX = "// WITH_ORDER:";
+    private static final String NUMBER_LINE_PREFIX = "NUMBER:";
+    private static final String NUMBER_JS_LINE_PREFIX = "NUMBER_JS:";
+    private static final String NUMBER_JAVA_LINE_PREFIX = "NUMBER_JAVA:";
+
+    private static final String EXECUTION_TIME_PREFIX = "TIME:";
+    private static final String WITH_ORDER_PREFIX = "WITH_ORDER:";
+
+    public static final List<String> KNOWN_PREFIXES = ImmutableList.of(
+            EXIST_LINE_PREFIX,
+            EXIST_JS_LINE_PREFIX,
+            EXIST_JAVA_LINE_PREFIX,
+            ABSENT_LINE_PREFIX,
+            ABSENT_JS_LINE_PREFIX,
+            ABSENT_JAVA_LINE_PREFIX,
+            EXIST_JAVA_ONLY_LINE_PREFIX,
+            EXIST_JS_ONLY_LINE_PREFIX,
+            NUMBER_LINE_PREFIX,
+            NUMBER_JS_LINE_PREFIX,
+            NUMBER_JAVA_LINE_PREFIX,
+            EXECUTION_TIME_PREFIX,
+            WITH_ORDER_PREFIX);
 
     @NotNull
     public static CompletionProposal[] itemsShouldExist(String fileText, Platform platform) {
@@ -118,9 +137,9 @@ public class ExpectedCompletionUtils {
             case ALL:
                 return processProposalAssertions(fileText, EXIST_LINE_PREFIX, EXIST_JAVA_LINE_PREFIX, EXIST_JS_LINE_PREFIX);
             case JAVA:
-                return processProposalAssertions(fileText, EXIST_LINE_PREFIX, EXIST_JAVA_LINE_PREFIX);
+                return processProposalAssertions(fileText, EXIST_LINE_PREFIX, EXIST_JAVA_LINE_PREFIX, EXIST_JAVA_ONLY_LINE_PREFIX);
             case JS:
-                return processProposalAssertions(fileText, EXIST_LINE_PREFIX, EXIST_JS_LINE_PREFIX);
+                return processProposalAssertions(fileText, EXIST_LINE_PREFIX, EXIST_JS_LINE_PREFIX, EXIST_JS_ONLY_LINE_PREFIX);
         }
 
         throw new IllegalArgumentException("platform");
@@ -132,9 +151,9 @@ public class ExpectedCompletionUtils {
             case ALL:
                 return processProposalAssertions(fileText, ABSENT_LINE_PREFIX, EXIST_JAVA_LINE_PREFIX, EXIST_JS_LINE_PREFIX);
             case JAVA:
-                return processProposalAssertions(fileText, ABSENT_LINE_PREFIX, ABSENT_JAVA_LINE_PREFIX);
+                return processProposalAssertions(fileText, ABSENT_LINE_PREFIX, ABSENT_JAVA_LINE_PREFIX, EXIST_JS_ONLY_LINE_PREFIX);
             case JS:
-                return processProposalAssertions(fileText, ABSENT_LINE_PREFIX, ABSENT_JS_LINE_PREFIX);
+                return processProposalAssertions(fileText, ABSENT_LINE_PREFIX, ABSENT_JS_LINE_PREFIX, EXIST_JAVA_ONLY_LINE_PREFIX);
         }
 
         throw new IllegalArgumentException("platform");
@@ -191,7 +210,11 @@ public class ExpectedCompletionUtils {
         return InTextDirectivesUtils.getPrefixedInt(fileText, WITH_ORDER_PREFIX) != null;
     }
 
-    protected static void assertContainsRenderedItems(CompletionProposal[] expected, LookupElement[] items, boolean checkOrder) {
+    public static void assertDirectivesValid(String fileText) {
+        InTextDirectivesUtils.assertHasUnknownPrefixes(fileText, KNOWN_PREFIXES);
+    }
+
+    public static void assertContainsRenderedItems(CompletionProposal[] expected, LookupElement[] items, boolean checkOrder) {
         List<CompletionProposal> itemsInformation = getItemsInformation(items);
         String allItemsString = listToString(itemsInformation);
 
@@ -230,7 +253,7 @@ public class ExpectedCompletionUtils {
         return InTextDirectivesUtils.getPrefixedInt(fileText, NUMBER_LINE_PREFIX);
     }
 
-    protected static void assertNotContainsRenderedItems(CompletionProposal[] unexpected,LookupElement[] items) {
+    public static void assertNotContainsRenderedItems(CompletionProposal[] unexpected,LookupElement[] items) {
         List<CompletionProposal> itemsInformation = getItemsInformation(items);
         String allItemsString = listToString(itemsInformation);
 
@@ -242,7 +265,7 @@ public class ExpectedCompletionUtils {
         }
     }
 
-    protected static List<CompletionProposal> getItemsInformation(LookupElement[] items) {
+    public static List<CompletionProposal> getItemsInformation(LookupElement[] items) {
         LookupElementPresentation presentation = new LookupElementPresentation();
 
         List<CompletionProposal> result = new ArrayList<CompletionProposal>();
@@ -257,7 +280,7 @@ public class ExpectedCompletionUtils {
         return result;
     }
 
-    protected static String listToString(Collection<CompletionProposal> items) {
+    public static String listToString(Collection<CompletionProposal> items) {
         return StringUtil.join(
             Collections2.transform(items, new Function<CompletionProposal, String>() {
                 @Override
