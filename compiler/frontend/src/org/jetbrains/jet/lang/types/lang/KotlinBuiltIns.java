@@ -78,7 +78,7 @@ public class KotlinBuiltIns {
             BUILT_INS_DIR + "/Unit.jet"
     );
 
-    private static final int FUNCTION_TRAIT_COUNT = 23;
+    public static final int FUNCTION_TRAIT_COUNT = 23;
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
