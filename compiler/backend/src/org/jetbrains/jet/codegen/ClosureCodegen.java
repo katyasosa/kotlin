@@ -35,7 +35,9 @@ import org.jetbrains.jet.codegen.state.GenerationStateAware;
 import org.jetbrains.jet.codegen.state.JetTypeMapper;
 import org.jetbrains.jet.codegen.state.JetTypeMapperMode;
 import org.jetbrains.jet.lang.descriptors.*;
-import org.jetbrains.jet.lang.psi.*;
+import org.jetbrains.jet.lang.psi.JetDeclarationWithBody;
+import org.jetbrains.jet.lang.psi.JetElement;
+import org.jetbrains.jet.lang.psi.JetExpression;
 import org.jetbrains.jet.lang.resolve.BindingContext;
 import org.jetbrains.jet.lang.resolve.BindingContextUtils;
 import org.jetbrains.jet.lang.resolve.java.JvmAbi;
@@ -49,7 +51,8 @@ import java.util.List;
 
 import static org.jetbrains.asm4.Opcodes.*;
 import static org.jetbrains.jet.codegen.AsmUtil.*;
-import static org.jetbrains.jet.codegen.CodegenUtil.*;
+import static org.jetbrains.jet.codegen.CodegenUtil.getInternalClassName;
+import static org.jetbrains.jet.codegen.CodegenUtil.isConst;
 import static org.jetbrains.jet.codegen.binding.CodegenBinding.classNameForAnonymousClass;
 import static org.jetbrains.jet.codegen.binding.CodegenBinding.isLocalNamedFun;
 import static org.jetbrains.jet.lang.resolve.java.AsmTypeConstants.OBJECT_TYPE;
@@ -70,7 +73,7 @@ public class ClosureCodegen extends GenerationStateAware {
     }
 
     public ClosureCodegen gen(JetDeclarationWithBody fun, CodegenContext context, ExpressionCodegen expressionCodegen) {
-        name = classNameForAnonymousClass(state.getBindingContext(), fun);
+        name = classNameForAnonymousClass(bindingContext, fun);
         ClassBuilder cv = state.getFactory().newVisitor(name.getInternalName(), fun.getContainingFile());
 
         FunctionDescriptor funDescriptor = bindingContext.get(BindingContext.FUNCTION, fun);
@@ -86,10 +89,13 @@ public class ClosureCodegen extends GenerationStateAware {
 
         SignatureWriter signatureWriter = new SignatureWriter();
 
-        List<ValueParameterDescriptor> parameters = funDescriptor.getValueParameters();
         JvmClassName funClass = getInternalClassName(funDescriptor);
         signatureWriter.visitClassType(funClass.getInternalName());
-        for (ValueParameterDescriptor parameter : parameters) {
+        ReceiverParameterDescriptor receiverParameter = funDescriptor.getReceiverParameter();
+        if (receiverParameter != null) {
+            appendType(signatureWriter, receiverParameter.getType(), '=');
+        }
+        for (ValueParameterDescriptor parameter : funDescriptor.getValueParameters()) {
             appendType(signatureWriter, parameter.getType(), '=');
         }
 
@@ -104,7 +110,7 @@ public class ClosureCodegen extends GenerationStateAware {
                        V1_6,
                        ACC_FINAL | ACC_SUPER,
                        name.getInternalName(),
-                       null,
+                       signatureWriter.toString(),
                        superclass.getInternalName(),
                        superInterfaces
         );
@@ -120,7 +126,7 @@ public class ClosureCodegen extends GenerationStateAware {
             generateConstInstance(fun, cv);
         }
 
-        genClosureFields(closure, cv, state.getTypeMapper());
+        genClosureFields(closure, cv, typeMapper);
 
         cv.done();
 
@@ -298,7 +304,17 @@ public class ClosureCodegen extends GenerationStateAware {
         signatureWriter.visitTypeArgument(variance);
 
         Type rawRetType = typeMapper.mapType(type, JetTypeMapperMode.TYPE_PARAMETER);
-        signatureWriter.visitClassType(rawRetType.getInternalName());
+        while (rawRetType.getSort() == Type.ARRAY) {
+            signatureWriter.visitArrayType();
+            rawRetType = rawRetType.getElementType();
+        }
+        if (rawRetType.getSort() == Type.OBJECT) {
+            signatureWriter.visitClassType(rawRetType.getInternalName());
+        }
+        else {
+            // rawRetType is primitive
+            signatureWriter.visitBaseType(rawRetType.getDescriptor().charAt(0));
+        }
         signatureWriter.visitEnd();
     }
 
