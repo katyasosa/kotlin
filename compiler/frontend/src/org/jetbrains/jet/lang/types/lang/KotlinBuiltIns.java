@@ -804,6 +804,57 @@ public class KotlinBuiltIns {
             @NotNull List<JetType> parameterTypes,
             @NotNull JetType returnType
     ) {
+        List<TypeProjection> arguments = getFunctionTypeArgumentProjections(receiverType, parameterTypes, returnType);
+        int size = parameterTypes.size();
+        ClassDescriptor classDescriptor = receiverType == null ? getFunction(size) : getExtensionFunction(size);
+        TypeConstructor constructor = classDescriptor.getTypeConstructor();
+
+        return new JetTypeImpl(annotations, constructor, false, arguments, classDescriptor.getMemberScope(arguments));
+    }
+
+    @NotNull
+    public JetType getKFunctionType(
+            @NotNull List<AnnotationDescriptor> annotations,
+            @Nullable JetType receiverType,
+            @NotNull List<JetType> parameterTypes,
+            @NotNull JetType returnType,
+            boolean extensionFunction
+    ) {
+        List<TypeProjection> arguments = getFunctionTypeArgumentProjections(receiverType, parameterTypes, returnType);
+        ClassDescriptor classDescriptor = getCorrespondingKFunctionClass(receiverType, extensionFunction, parameterTypes.size());
+
+        return new JetTypeImpl(
+                annotations,
+                classDescriptor.getTypeConstructor(),
+                false,
+                arguments,
+                classDescriptor.getMemberScope(arguments)
+        );
+    }
+
+    @NotNull
+    private ClassDescriptor getCorrespondingKFunctionClass(
+            @Nullable JetType receiverType,
+            boolean extensionFunction,
+            int numberOfParameters
+    ) {
+        if (receiverType == null) {
+            return getKFunction(numberOfParameters);
+        }
+        else if (extensionFunction) {
+            return getKExtensionFunction(numberOfParameters);
+        }
+        else {
+            return getKMemberFunction(numberOfParameters);
+        }
+    }
+
+    @NotNull
+    private static List<TypeProjection> getFunctionTypeArgumentProjections(
+            @Nullable JetType receiverType,
+            @NotNull List<JetType> parameterTypes,
+            @NotNull JetType returnType
+    ) {
         List<TypeProjection> arguments = new ArrayList<TypeProjection>();
         if (receiverType != null) {
             arguments.add(defaultProjection(receiverType));
@@ -812,10 +863,7 @@ public class KotlinBuiltIns {
             arguments.add(defaultProjection(parameterType));
         }
         arguments.add(defaultProjection(returnType));
-        int size = parameterTypes.size();
-        ClassDescriptor classDescriptor = receiverType == null ? getFunction(size) : getExtensionFunction(size);
-        TypeConstructor constructor = classDescriptor.getTypeConstructor();
-        return new JetTypeImpl(annotations, constructor, false, arguments, classDescriptor.getMemberScope(arguments));
+        return arguments;
     }
 
     private static TypeProjection defaultProjection(JetType returnType) {

@@ -168,7 +168,7 @@ public class CallExpressionResolver {
     }
 
     @Nullable
-    private ResolvedCallWithTrace<FunctionDescriptor> getResolvedCallForFunction(
+    public ResolvedCallWithTrace<FunctionDescriptor> getResolvedCallForFunction(
             @NotNull Call call, @NotNull JetExpression callExpression,
             @NotNull ResolutionContext context, @NotNull ResolveMode resolveMode,
             @NotNull ResolutionResultsCache resolutionResultsCache, @NotNull boolean[] result

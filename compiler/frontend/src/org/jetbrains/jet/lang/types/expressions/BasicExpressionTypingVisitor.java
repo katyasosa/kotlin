@@ -16,6 +16,8 @@
 
 package org.jetbrains.jet.lang.types.expressions;
 
+import com.google.common.base.Predicate;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.Multimap;
 import com.intellij.lang.ASTNode;
 import com.intellij.psi.PsiElement;
@@ -24,6 +26,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jet.JetNodeTypes;
 import org.jetbrains.jet.lang.descriptors.*;
+import org.jetbrains.jet.lang.descriptors.annotations.AnnotationDescriptor;
 import org.jetbrains.jet.lang.diagnostics.Errors;
 import org.jetbrains.jet.lang.psi.*;
 import org.jetbrains.jet.lang.resolve.*;
@@ -35,16 +38,22 @@ import org.jetbrains.jet.lang.resolve.calls.autocasts.Nullability;
 import org.jetbrains.jet.lang.resolve.calls.context.ExpressionPosition;
 import org.jetbrains.jet.lang.resolve.calls.context.ResolutionResultsCache;
 import org.jetbrains.jet.lang.resolve.calls.context.ResolveMode;
+import org.jetbrains.jet.lang.resolve.calls.model.ResolvedCall;
 import org.jetbrains.jet.lang.resolve.calls.results.OverloadResolutionResults;
 import org.jetbrains.jet.lang.resolve.calls.results.OverloadResolutionResultsUtil;
+import org.jetbrains.jet.lang.resolve.calls.tasks.CallableDescriptorCollector;
+import org.jetbrains.jet.lang.resolve.calls.tasks.CallableDescriptorCollectors;
 import org.jetbrains.jet.lang.resolve.calls.util.CallMaker;
 import org.jetbrains.jet.lang.resolve.constants.*;
 import org.jetbrains.jet.lang.resolve.constants.StringValue;
 import org.jetbrains.jet.lang.resolve.name.LabelName;
 import org.jetbrains.jet.lang.resolve.name.Name;
 import org.jetbrains.jet.lang.resolve.scopes.JetScope;
+import org.jetbrains.jet.lang.resolve.scopes.JetScopeUtils;
 import org.jetbrains.jet.lang.resolve.scopes.WritableScopeImpl;
 import org.jetbrains.jet.lang.resolve.scopes.receivers.ExpressionReceiver;
+import org.jetbrains.jet.lang.resolve.scopes.receivers.ReceiverValue;
+import org.jetbrains.jet.lang.resolve.scopes.receivers.TransientReceiver;
 import org.jetbrains.jet.lang.types.*;
 import org.jetbrains.jet.lang.types.checker.JetTypeChecker;
 import org.jetbrains.jet.lang.types.checker.TypeCheckingProcedure;
@@ -558,8 +567,167 @@ public class BasicExpressionTypingVisitor extends ExpressionTypingVisitor {
 
     @Override
     public JetTypeInfo visitCallableReferenceExpression(JetCallableReferenceExpression expression, ExpressionTypingContext context) {
-        context.trace.report(UNSUPPORTED.on(expression, getClass().getCanonicalName()));
-        return JetTypeInfo.create(null, context.dataFlowInfo);
+        JetTypeReference typeReference = expression.getTypeReference();
+        JetSimpleNameExpression callableReference = expression.getCallableReference();
+
+        JetType receiverType =
+                typeReference == null
+                ? null
+                : context.expressionTypingServices.getTypeResolver().resolveType(context.scope, typeReference, context.trace, false);
+
+        if (callableReference.getReferencedName().isEmpty()) {
+            context.trace.report(UNRESOLVED_REFERENCE.on(callableReference, callableReference));
+            JetType errorType = ErrorUtils.createErrorType("Empty callable reference");
+            return DataFlowUtils.checkType(errorType, expression, context, context.dataFlowInfo);
+        }
+
+        JetType result = getCallableReferenceType(callableReference, receiverType, context);
+        return DataFlowUtils.checkType(result, expression, context, context.dataFlowInfo);
+    }
+
+    @Nullable
+    private JetType getCallableReferenceType(
+            @NotNull JetSimpleNameExpression reference,
+            @Nullable JetType lhsType,
+            @NotNull ExpressionTypingContext context
+    ) {
+        FunctionDescriptor descriptor = null;
+        JetType receiverType = null;
+
+        boolean[] result = new boolean[1];
+        if (lhsType != null) {
+            ClassifierDescriptor classifier = lhsType.getConstructor().getDeclarationDescriptor();
+            // TODO: report an error if classifier is not a class
+            assert classifier instanceof ClassDescriptor;
+            ReceiverValue receiver = ((ClassDescriptor) classifier).getThisAsReceiverParameter().getValue();
+
+            descriptor = findAndResolveFunctionForCallableReference(reference, receiver, context, result);
+            receiverType = lhsType;
+        }
+        else {
+            List<ReceiverValue> possibleReceivers = JetScopeUtils.getImplicitReceiversHierarchyValues(context.scope);
+            possibleReceivers.add(NO_RECEIVER);
+
+            for (ReceiverValue possibleReceiver : possibleReceivers) {
+                TemporaryBindingTrace trace = TemporaryBindingTrace.create(context.trace,
+                                                                           "trace to resolve callable reference with receiver");
+                descriptor = findAndResolveFunctionForCallableReference(reference, possibleReceiver,
+                                                                        context.replaceBindingTrace(trace), result);
+                if (result[0]) {
+                    trace.commit();
+                    receiverType = possibleReceiver.exists() ? possibleReceiver.getType() : null;
+                    break;
+                }
+            }
+        }
+
+        if (!result[0]) {
+            context.trace.report(UNRESOLVED_REFERENCE.on(reference, reference));
+        }
+        if (descriptor == null) return null;
+
+        if (DescriptorUtils.isConstructorOfStaticNestedClass(descriptor)) {
+            // TODO: this is a hack, since resulting KFunction shouldn't have outer class as a generic parameter
+            receiverType = null;
+        }
+
+        //noinspection ConstantConditions
+        return KotlinBuiltIns.getInstance().getKFunctionType(
+                Collections.<AnnotationDescriptor>emptyList(),
+                receiverType,
+                DescriptorUtils.getValueParametersTypes(descriptor.getValueParameters()),
+                descriptor.getReturnType(),
+                descriptor.getReceiverParameter() != null
+        );
+    }
+
+    @Nullable
+    private FunctionDescriptor findAndResolveFunctionForCallableReference(
+            @NotNull JetSimpleNameExpression reference,
+            @NotNull ReceiverValue receiver,
+            @NotNull ExpressionTypingContext context,
+            boolean[] result
+    ) {
+        // We can't launch a full resolve yet, since we can't construct a Call object, because we don't have any clue for
+        // what types should the arguments have. Instead, we find the candidate for the referenced item by its name,
+        // then construct a proper Call object and pass it to CallResolver in order to run the full resolve process on it
+        // (including visibility/modality checks, etc.)
+
+        Collection<FunctionDescriptor> descriptors = collectMembersToResolveCallableReference(CallableDescriptorCollectors.FUNCTIONS,
+                reference.getReferencedNameAsName(), receiver, context.scope);
+
+        if (descriptors.size() > 1) {
+            context.trace.report(AMBIGUOUS_CALLABLE_REFERENCE.on(reference));
+            context.trace.record(AMBIGUOUS_REFERENCE_TARGET, reference, descriptors);
+            result[0] = true;
+            return null;
+        }
+        else if (descriptors.isEmpty()) {
+            result[0] = false;
+            return null;
+        }
+
+        FunctionDescriptor descriptor = descriptors.iterator().next();
+
+        if (DescriptorUtils.isConstructorOfStaticNestedClass(descriptor)) {
+            // TODO: this is a hack to make TaskPrioritizer collect tasks in the receiver's scope, but with no actual receiver
+            receiver = new TransientReceiver(new NamespaceType(descriptor.getName(), receiver.getType().getMemberScope()));
+        }
+
+        Call call = CallMaker.makeCall(reference, receiver, null, reference, createFakeArgumentsToFunction(reference, descriptor));
+        TemporaryBindingTrace traceForFunction = TemporaryBindingTrace.create(context.trace, "trace to resolve as function", reference);
+
+        ResolvedCall<FunctionDescriptor> resolvedCall = context.expressionTypingServices.getCallExpressionResolver()
+                .getResolvedCallForFunction(call, reference, context.replaceBindingTrace(traceForFunction),
+                                            ResolveMode.TOP_LEVEL_CALL, ResolutionResultsCache.create(), result);
+
+        if (!result[0]) return null;
+
+        traceForFunction.commit();
+        return resolvedCall != null ? resolvedCall.getResultingDescriptor() : null;
+    }
+
+    @NotNull
+    private List<ValueArgument> createFakeArgumentsToFunction(
+            @NotNull JetSimpleNameExpression reference,
+            @NotNull FunctionDescriptor descriptor
+    ) {
+        int size = descriptor.getValueParameters().size();
+        List<ValueArgument> arguments = new ArrayList<ValueArgument>(size);
+        ValueArgument fakeArgument = CallMaker.makeValueArgument(null, reference);
+        for (int i = 0; i < size; i++) {
+            arguments.add(fakeArgument);
+        }
+        return arguments;
+    }
+
+    @NotNull
+    private <D extends CallableMemberDescriptor> Collection<D> collectMembersToResolveCallableReference(
+            @NotNull CallableDescriptorCollector<D> collector,
+            @NotNull Name name,
+            @NotNull final ReceiverValue receiver,
+            @NotNull JetScope scope
+    ) {
+        if (!receiver.exists()) {
+            return collector.getNonExtensionsByName(scope, name);
+        }
+
+        Collection<D> members = collector.getMembersByName(receiver.getType(), name);
+        Collection<D> nonMembers = collector.getNonMembersByName(scope, name);
+
+        Collection<D> extensions = Collections2.filter(nonMembers, new Predicate<D>() {
+            @Override
+            public boolean apply(@Nullable D descriptor) {
+                if (descriptor == null) return false;
+                ReceiverParameterDescriptor receiverParameter = descriptor.getReceiverParameter();
+                if (receiverParameter == null) return false;
+                ReceiverValue value = receiverParameter.getValue();
+                return value.exists() && value.getType().equals(receiver.getType());
+            }
+        });
+
+        members.addAll(extensions);
+        return members;
     }
 
     @Override

@@ -397,6 +397,9 @@ public class DefaultErrorMessages {
         MAP.put(NONE_APPLICABLE, "None of the following functions can be called with the arguments supplied: {0}", AMBIGUOUS_CALLS);
         MAP.put(CANNOT_COMPLETE_RESOLVE, "Cannot choose among the following candidates without completing type inference: {0}", AMBIGUOUS_CALLS);
 
+        // TODO: "specify types explicitly" when it's implemented
+        MAP.put(AMBIGUOUS_CALLABLE_REFERENCE, "Ambiguous callable reference");
+
         MAP.put(NO_VALUE_FOR_PARAMETER, "No value passed for parameter {0}", NAME);
         MAP.put(MISSING_RECEIVER, "A receiver of type {0} is required", RENDER_TYPE);
         MAP.put(NO_RECEIVER_ADMITTED, "No receiver can be passed to this function or property");
