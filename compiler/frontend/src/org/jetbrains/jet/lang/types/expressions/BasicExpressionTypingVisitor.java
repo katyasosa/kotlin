@@ -27,6 +27,9 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.jet.JetNodeTypes;
 import org.jetbrains.jet.lang.descriptors.*;
 import org.jetbrains.jet.lang.descriptors.annotations.AnnotationDescriptor;
+import org.jetbrains.jet.lang.descriptors.impl.FunctionDescriptorImpl;
+import org.jetbrains.jet.lang.descriptors.impl.FunctionDescriptorUtil;
+import org.jetbrains.jet.lang.descriptors.impl.SimpleFunctionDescriptorImpl;
 import org.jetbrains.jet.lang.diagnostics.Errors;
 import org.jetbrains.jet.lang.psi.*;
 import org.jetbrains.jet.lang.resolve.*;
@@ -44,6 +47,7 @@ import org.jetbrains.jet.lang.resolve.calls.results.OverloadResolutionResultsUti
 import org.jetbrains.jet.lang.resolve.calls.tasks.CallableDescriptorCollector;
 import org.jetbrains.jet.lang.resolve.calls.tasks.CallableDescriptorCollectors;
 import org.jetbrains.jet.lang.resolve.calls.util.CallMaker;
+import org.jetbrains.jet.lang.resolve.calls.util.ExpressionAsFunctionDescriptor;
 import org.jetbrains.jet.lang.resolve.constants.*;
 import org.jetbrains.jet.lang.resolve.constants.StringValue;
 import org.jetbrains.jet.lang.resolve.name.LabelName;
@@ -568,29 +572,31 @@ public class BasicExpressionTypingVisitor extends ExpressionTypingVisitor {
     @Override
     public JetTypeInfo visitCallableReferenceExpression(JetCallableReferenceExpression expression, ExpressionTypingContext context) {
         JetTypeReference typeReference = expression.getTypeReference();
-        JetSimpleNameExpression callableReference = expression.getCallableReference();
 
         JetType receiverType =
                 typeReference == null
                 ? null
                 : context.expressionTypingServices.getTypeResolver().resolveType(context.scope, typeReference, context.trace, false);
 
+        JetSimpleNameExpression callableReference = expression.getCallableReference();
         if (callableReference.getReferencedName().isEmpty()) {
             context.trace.report(UNRESOLVED_REFERENCE.on(callableReference, callableReference));
             JetType errorType = ErrorUtils.createErrorType("Empty callable reference");
             return DataFlowUtils.checkType(errorType, expression, context, context.dataFlowInfo);
         }
 
-        JetType result = getCallableReferenceType(callableReference, receiverType, context);
+        JetType result = getCallableReferenceType(expression, receiverType, context);
         return DataFlowUtils.checkType(result, expression, context, context.dataFlowInfo);
     }
 
     @Nullable
     private JetType getCallableReferenceType(
-            @NotNull JetSimpleNameExpression reference,
+            @NotNull JetCallableReferenceExpression expression,
             @Nullable JetType lhsType,
             @NotNull ExpressionTypingContext context
     ) {
+        JetSimpleNameExpression reference = expression.getCallableReference();
+
         FunctionDescriptor descriptor = null;
         JetType receiverType = null;
 
@@ -631,14 +637,25 @@ public class BasicExpressionTypingVisitor extends ExpressionTypingVisitor {
             receiverType = null;
         }
 
+        boolean isExtension = descriptor.getReceiverParameter() != null;
         //noinspection ConstantConditions
-        return KotlinBuiltIns.getInstance().getKFunctionType(
+        JetType type = KotlinBuiltIns.getInstance().getKFunctionType(
                 Collections.<AnnotationDescriptor>emptyList(),
                 receiverType,
                 DescriptorUtils.getValueParametersTypes(descriptor.getValueParameters()),
                 descriptor.getReturnType(),
-                descriptor.getReceiverParameter() != null
+                isExtension
         );
+
+        ExpressionAsFunctionDescriptor functionDescriptor = new ExpressionAsFunctionDescriptor(
+                context.scope.getContainingDeclaration(),
+                Name.special("<callable-reference>")
+        );
+        FunctionDescriptorUtil.initializeFromFunctionType(functionDescriptor, type, null, Modality.FINAL, Visibilities.PUBLIC);
+
+        context.trace.record(CALLABLE_REFERENCE, expression, functionDescriptor);
+
+        return type;
     }
 
     @Nullable

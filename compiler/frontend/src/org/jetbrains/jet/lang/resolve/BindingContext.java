@@ -219,9 +219,12 @@ public interface BindingContext {
             Slices.<JetObjectDeclarationName, PropertyDescriptor>sliceBuilder()
                     .setOpposite((WritableSlice) BindingContextUtils.DESCRIPTOR_TO_DECLARATION).build();
 
+    WritableSlice<PsiElement, FunctionDescriptor> CALLABLE_REFERENCE = Slices.<PsiElement, FunctionDescriptor>sliceBuilder()
+            .setOpposite((WritableSlice) BindingContextUtils.DESCRIPTOR_TO_DECLARATION).build();
+
     WritableSlice[] DECLARATIONS_TO_DESCRIPTORS = new WritableSlice[] {
             NAMESPACE, CLASS, TYPE_PARAMETER, FUNCTION, CONSTRUCTOR, VARIABLE, VALUE_PARAMETER, PROPERTY_ACCESSOR,
-            PRIMARY_CONSTRUCTOR_PARAMETER, OBJECT_DECLARATION
+            PRIMARY_CONSTRUCTOR_PARAMETER, OBJECT_DECLARATION, CALLABLE_REFERENCE
     };
 
     ReadOnlySlice<PsiElement, DeclarationDescriptor> DECLARATION_TO_DESCRIPTOR = Slices.<PsiElement, DeclarationDescriptor>sliceBuilder()

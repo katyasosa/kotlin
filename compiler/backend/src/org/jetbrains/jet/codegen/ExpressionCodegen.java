@@ -2432,6 +2432,12 @@ public class ExpressionCodegen extends JetVisitor<StackValue, StackValue> implem
     }
 
     @Override
+    public StackValue visitCallableReferenceExpression(JetCallableReferenceExpression expression, StackValue data) {
+        v.aconst(null);
+        return StackValue.onStack(OBJECT_TYPE);
+    }
+
+    @Override
     public StackValue visitDotQualifiedExpression(JetDotQualifiedExpression expression, StackValue receiver) {
         JetExpression receiverExpression = expression.getReceiverExpression();
         StackValue receiverValue = receiverExpression instanceof JetSuperExpression ? gen(receiverExpression) : StackValue.none();

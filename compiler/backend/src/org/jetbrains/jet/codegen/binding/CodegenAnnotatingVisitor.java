@@ -23,6 +23,7 @@ import org.jetbrains.jet.lang.descriptors.*;
 import org.jetbrains.jet.lang.descriptors.annotations.AnnotationDescriptor;
 import org.jetbrains.jet.lang.descriptors.impl.ClassDescriptorImpl;
 import org.jetbrains.jet.lang.descriptors.impl.MutableClassDescriptor;
+import org.jetbrains.jet.lang.descriptors.impl.SimpleFunctionDescriptorImpl;
 import org.jetbrains.jet.lang.psi.*;
 import org.jetbrains.jet.lang.resolve.BindingContext;
 import org.jetbrains.jet.lang.resolve.BindingTrace;
@@ -58,11 +59,17 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
 
     private static final List<ClassDescriptor> FUNCTIONS;
     private static final List<ClassDescriptor> EXTENSION_FUNCTIONS;
+    private static final List<ClassDescriptor> K_FUNCTIONS;
+    private static final List<ClassDescriptor> K_MEMBER_FUNCTIONS;
+    private static final List<ClassDescriptor> K_EXTENSION_FUNCTIONS;
 
     static {
         int n = KotlinBuiltIns.FUNCTION_TRAIT_COUNT;
         FUNCTIONS = new ArrayList<ClassDescriptor>(n);
         EXTENSION_FUNCTIONS = new ArrayList<ClassDescriptor>(n);
+        K_FUNCTIONS = new ArrayList<ClassDescriptor>(n);
+        K_MEMBER_FUNCTIONS = new ArrayList<ClassDescriptor>(n);
+        K_EXTENSION_FUNCTIONS = new ArrayList<ClassDescriptor>(n);
 
         KotlinBuiltIns builtIns = KotlinBuiltIns.getInstance();
         for (int i = 0; i < n; i++) {
@@ -71,6 +78,15 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
 
             Name extensionFunctionImpl = Name.identifier("ExtensionFunctionImpl" + i);
             EXTENSION_FUNCTIONS.add(createFunctionImplDescriptor(extensionFunctionImpl, builtIns.getExtensionFunction(i)));
+
+            Name kFunctionImpl = Name.identifier("KFunctionImpl" + i);
+            K_FUNCTIONS.add(createFunctionImplDescriptor(kFunctionImpl, builtIns.getKFunction(i)));
+
+            Name kMemberFunctionImpl = Name.identifier("KMemberFunctionImpl" + i);
+            K_MEMBER_FUNCTIONS.add(createFunctionImplDescriptor(kMemberFunctionImpl, builtIns.getKMemberFunction(i)));
+
+            Name kExtensionFunctionImpl = Name.identifier("KExtensionFunctionImpl" + i);
+            K_EXTENSION_FUNCTIONS.add(createFunctionImplDescriptor(kExtensionFunctionImpl, builtIns.getKExtensionFunction(i)));
         }
     }
 
@@ -160,7 +176,8 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
             if (declaration instanceof JetFunctionLiteralExpression ||
                 declaration instanceof JetNamedFunction ||
                 declaration instanceof JetObjectLiteralExpression ||
-                declaration instanceof JetCallExpression) {
+                declaration instanceof JetCallExpression ||
+                declaration instanceof JetCallableReferenceExpression) {
             }
             else {
                 throw new IllegalStateException(
@@ -309,6 +326,21 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
         classStack.push(classDescriptor);
         nameStack.push(name);
         super.visitFunctionLiteralExpression(expression);
+        nameStack.pop();
+        classStack.pop();
+    }
+
+    @Override
+    public void visitCallableReferenceExpression(JetCallableReferenceExpression expression) {
+        FunctionDescriptor functionDescriptor = (FunctionDescriptor) bindingContext.get(DECLARATION_TO_DESCRIPTOR, expression);
+
+        String name = inventAnonymousClassName(expression);
+        ClassDescriptor classDescriptor = recordClassForFunction(functionDescriptor);
+        recordClosure(bindingTrace, expression, classDescriptor, peekFromStack(classStack), JvmClassName.byInternalName(name), true /* ?! */);
+
+        classStack.push(classDescriptor);
+        nameStack.push(name);
+        super.visitCallableReferenceExpression(expression);
         nameStack.pop();
         classStack.pop();
     }

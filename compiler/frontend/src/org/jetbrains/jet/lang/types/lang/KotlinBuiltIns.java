@@ -138,8 +138,10 @@ public class KotlinBuiltIns {
     private volatile ImmutableSet<ClassDescriptor> nonPhysicalClasses;
 
     private final ImmutableSet<ClassDescriptor> functionClassesSet;
-
     private final ImmutableSet<ClassDescriptor> extensionFunctionClassesSet;
+    private final ImmutableSet<ClassDescriptor> kFunctionClassesSet;
+    private final ImmutableSet<ClassDescriptor> kMemberFunctionClassesSet;
+    private final ImmutableSet<ClassDescriptor> kExtensionFunctionClassesSet;
 
     private final EnumMap<PrimitiveType, ClassDescriptor> primitiveTypeToClass;
     private final EnumMap<PrimitiveType, ClassDescriptor> primitiveTypeToArrayClass;
@@ -170,6 +172,9 @@ public class KotlinBuiltIns {
 
             this.functionClassesSet = computeIndexedClasses("Function", FUNCTION_TRAIT_COUNT);
             this.extensionFunctionClassesSet = computeIndexedClasses("ExtensionFunction", FUNCTION_TRAIT_COUNT);
+            this.kFunctionClassesSet = computeIndexedClasses("KFunction", FUNCTION_TRAIT_COUNT);
+            this.kMemberFunctionClassesSet = computeIndexedClasses("KMemberFunction", FUNCTION_TRAIT_COUNT);
+            this.kExtensionFunctionClassesSet = computeIndexedClasses("KExtensionFunction", FUNCTION_TRAIT_COUNT);
 
             this.primitiveTypeToClass = new EnumMap<PrimitiveType, ClassDescriptor>(PrimitiveType.class);
             this.primitiveTypeToJetType = new EnumMap<PrimitiveType, JetType>(PrimitiveType.class);
@@ -896,7 +901,7 @@ public class KotlinBuiltIns {
     }
 
     public boolean isFunctionOrExtensionFunctionType(@NotNull JetType type) {
-        return isFunctionType(type) || isExtensionFunctionType(type);
+        return isFunctionType(type) || isExtensionFunctionType(type) || isKFunctionType(type) || isKMemberFunctionType(type) || isKExtensionFunctionType(type);
     }
 
     public boolean isFunctionType(@NotNull JetType type) {
@@ -905,6 +910,18 @@ public class KotlinBuiltIns {
 
     public boolean isExtensionFunctionType(@NotNull JetType type) {
         return setContainsClassOf(extensionFunctionClassesSet, type);
+    }
+
+    public boolean isKFunctionType(@NotNull JetType type) {
+        return setContainsClassOf(kFunctionClassesSet, type);
+    }
+
+    public boolean isKMemberFunctionType(@NotNull JetType type) {
+        return setContainsClassOf(kMemberFunctionClassesSet, type);
+    }
+
+    public boolean isKExtensionFunctionType(@NotNull JetType type) {
+        return setContainsClassOf(kExtensionFunctionClassesSet, type);
     }
 
     @Nullable
